@@ -1,0 +1,10 @@
+build/
+*.obj
+*.res
+*.exe
+*.iobj
+*.ipdb
+*.pdb
+*.ilk
+temp
+config.ini
