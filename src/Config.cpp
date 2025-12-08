@@ -64,8 +64,6 @@ void AppConfig::Load() {
         else if (key == L"ColorBackground") colorBackground = value;
         else if (key == L"ColorGraphCpu") colorGraphCpu = value;
         else if (key == L"ColorGraphRam") colorGraphRam = value;
-        else if (key == L"ColorGraphCpu") colorGraphCpu = value;
-        else if (key == L"ColorGraphRam") colorGraphRam = value;
         else if (key == L"GhostModeEnabled") ghostModeEnabled = ParseBool(value, ghostModeEnabled);
     }
 
