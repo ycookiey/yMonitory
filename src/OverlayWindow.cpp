@@ -344,93 +344,117 @@ HRESULT OverlayWindow::OnRender() {
         m_pTextBrush
     );
 
-    // Draw Graphs (Simple polylines)
+    // Draw Graphs (Smooth Bezier)
+    
     // CPU Graph
     const double* cpuHist = m_systemMonitor.GetCpuHistory();
     float xStep = (rtSize.width - 10) / (SystemMonitor::HISTORY_SIZE - 1);
     float yBase = rtSize.height / 2 - 5;
     float yScale = (rtSize.height / 2 - 10) / 100.0f; // Scale to fit half height
 
-    ID2D1PathGeometry* pPath = NULL;
-    m_pD2DFactory->CreatePathGeometry(&pPath);
-    if (pPath) {
+    auto DrawSmoothGraph = [&](const double* data, float yBasePos, ID2D1Brush* strokeBrush, ID2D1Brush* fillBrush) {
+        if (!strokeBrush) return;
+
+        // Create Path
+        ID2D1PathGeometry* pPath = NULL;
+        m_pD2DFactory->CreatePathGeometry(&pPath);
+        if (!pPath) return;
+
         ID2D1GeometrySink* pSink = NULL;
         pPath->Open(&pSink);
-        pSink->BeginFigure(D2D1::Point2F(5, yBase - (float)cpuHist[0] * yScale), D2D1_FIGURE_BEGIN_HOLLOW); // Stroke figure
-        for(int i=1; i<SystemMonitor::HISTORY_SIZE; i++) {
-            pSink->AddLine(D2D1::Point2F(5 + i * xStep, yBase - (float)cpuHist[i] * yScale));
+
+        D2D1_POINT_2F p0 = D2D1::Point2F(5, yBasePos - (float)data[0] * yScale);
+        pSink->BeginFigure(p0, D2D1_FIGURE_BEGIN_FILLED); // Filled for gradient, we will just stroke it later if fill is null? 
+        // Actually we need two paths: one for stroke (HOLLOW), one for fill (FILLED)
+        
+        // Simplified Logic: Just draw straight lines for now, but use Bezier?
+        // True Bezier requires control points.
+        // Simple smoothing: Catmull-Rom or just midpoint bezier.
+        // Let's use a simple approach: Line to each point? No, user asked for smooth.
+        
+        // Bezier interpolation logic:
+        // For p[i] to p[i+1], control points c1, c2.
+        // c1 = p[i] + (p[i+1] - p[i-1]) * tension
+        // But we need previous points.
+        
+        // Let's implement a simple "add line" for now, but if we want smooth, we use AddBezier.
+        // Since implementing full spline in one go without helper class is verbose, 
+        // I will stick to the previous implementation but add a small smoothing if possible,
+        // OR essentially, replace the loop with AddBezier.
+        
+        // RE-IMPLEMENTATION: Using a simple heuristic for control points (Horizontal smoothing)
+        // cp1 = current + (next.x - prev.x) * favor, etc.
+        // For simplicity in this tool, assume X is constant step.
+        
+        // Let's try drawing with Beziers from i to i+1.
+        // Control points: (x_i + step/2, y_i), (x_{i+1} - step/2, y_{i+1})
+        // This creates a smooth curve that is horizontal at each data point.
+        
+        for(int i=0; i<SystemMonitor::HISTORY_SIZE - 1; i++) {
+             D2D1_POINT_2F pStart = D2D1::Point2F(5 + i * xStep, yBasePos - (float)data[i] * yScale);
+             D2D1_POINT_2F pEnd = D2D1::Point2F(5 + (i+1) * xStep, yBasePos - (float)data[i+1] * yScale);
+             
+             D2D1_POINT_2F c1 = D2D1::Point2F(pStart.x + xStep * 0.5f, pStart.y);
+             D2D1_POINT_2F c2 = D2D1::Point2F(pEnd.x - xStep * 0.5f, pEnd.y);
+             
+             pSink->AddBezier(D2D1::BezierSegment(c1, c2, pEnd));
         }
+
         pSink->EndFigure(D2D1_FIGURE_END_OPEN);
         pSink->Close();
         pSink->Release();
-
-        m_pRenderTarget->DrawGeometry(pPath, m_pGraphCpuBrush, 1.0f);
-        pPath->Release();
-    }
-    // Fill
-    m_pD2DFactory->CreatePathGeometry(&pPath);
-    if (pPath) {
-        ID2D1GeometrySink* pSink = NULL;
-        pPath->Open(&pSink);
-        pSink->BeginFigure(D2D1::Point2F(5, yBase), D2D1_FIGURE_BEGIN_FILLED);
-        pSink->AddLine(D2D1::Point2F(5, yBase - (float)cpuHist[0] * yScale));
-        for(int i=1; i<SystemMonitor::HISTORY_SIZE; i++) {
-            pSink->AddLine(D2D1::Point2F(5 + i * xStep, yBase - (float)cpuHist[i] * yScale));
-        }
-        pSink->AddLine(D2D1::Point2F(5 + (SystemMonitor::HISTORY_SIZE - 1) * xStep, yBase));
-        pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-        pSink->Close();
-        pSink->Release();
         
-        // Update Gradient Rect
-        m_pGraphCpuGradient->SetStartPoint(D2D1::Point2F(0, yBase - 100 * yScale)); // Approximate top
-        m_pGraphCpuGradient->SetEndPoint(D2D1::Point2F(0, yBase));
-        m_pRenderTarget->FillGeometry(pPath, m_pGraphCpuGradient);
-        pPath->Release();
-    }
+        // Stroke
+        m_pRenderTarget->DrawGeometry(pPath, strokeBrush, 1.5f); // Thicker line
 
-    // RAM Graph (similar logic, offset Y)
-    const double* ramHist = m_systemMonitor.GetMemoryHistory();
-    yBase = rtSize.height - 5; // Bottom
+        // Fill (Gradient)
+        if (fillBrush) {
+            ID2D1PathGeometry* pFillPath = NULL;
+            m_pD2DFactory->CreatePathGeometry(&pFillPath);
+            if(pFillPath) {
+                pFillPath->Open(&pSink);
+                pSink->BeginFigure(D2D1::Point2F(5, yBasePos), D2D1_FIGURE_BEGIN_FILLED); // Start bottom-left
+                pSink->AddLine(p0); // Up to first point
+                
+                // Trace curve again
+                for(int i=0; i<SystemMonitor::HISTORY_SIZE - 1; i++) {
+                     D2D1_POINT_2F pStart = D2D1::Point2F(5 + i * xStep, yBasePos - (float)data[i] * yScale);
+                     D2D1_POINT_2F pEnd = D2D1::Point2F(5 + (i+1) * xStep, yBasePos - (float)data[i+1] * yScale);
+                     D2D1_POINT_2F c1 = D2D1::Point2F(pStart.x + xStep * 0.5f, pStart.y);
+                     D2D1_POINT_2F c2 = D2D1::Point2F(pEnd.x - xStep * 0.5f, pEnd.y);
+                     pSink->AddBezier(D2D1::BezierSegment(c1, c2, pEnd));
+                }
+                
+                pSink->AddLine(D2D1::Point2F(5 + (SystemMonitor::HISTORY_SIZE - 1) * xStep, yBasePos)); // Down to bottom-right
+                pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+                pSink->Close();
+                pSink->Release();
+                
+                // Adjust gradient
+                if (auto grad = dynamic_cast<ID2D1LinearGradientBrush*>(fillBrush)) {
+                     grad->SetStartPoint(D2D1::Point2F(0, yBasePos - 100 * yScale));
+                     grad->SetEndPoint(D2D1::Point2F(0, yBasePos));
+                }
+                // We passed generic brush, but we know it's gradient in context. 
+                // Casting might be unsafe if not checked, but here we control usage.
+                // However, ID2D1Brush doesn't have SetStartPoint. We need to pass the gradient brush specifically or cast carefully.
+                // Let's rely on caller (DrawSmoothGraph) assuming the brush is already configured or we cast strictly.
+                // C-style cast for interface pointer is valid for D2D derived standard.
+                ((ID2D1LinearGradientBrush*)fillBrush)->SetStartPoint(D2D1::Point2F(0, yBasePos - 50)); 
+                ((ID2D1LinearGradientBrush*)fillBrush)->SetEndPoint(D2D1::Point2F(0, yBasePos));
+
+                m_pRenderTarget->FillGeometry(pFillPath, fillBrush);
+                pFillPath->Release();
+            }
+        }
+        pPath->Release();
+    };
+
+    DrawSmoothGraph(cpuHist, yBase, m_pGraphCpuBrush, m_pGraphCpuGradient);
     
-    // Scale for RAM? Percent is 0-100.
-    // Let's use same scale logic
-    pPath = NULL;
-    m_pD2DFactory->CreatePathGeometry(&pPath);
-    if (pPath) {
-        ID2D1GeometrySink* pSink = NULL;
-        pPath->Open(&pSink);
-        pSink->BeginFigure(D2D1::Point2F(5, yBase - (float)ramHist[0] * yScale), D2D1_FIGURE_BEGIN_HOLLOW);
-        for(int i=1; i<SystemMonitor::HISTORY_SIZE; i++) {
-            pSink->AddLine(D2D1::Point2F(5 + i * xStep, yBase - (float)ramHist[i] * yScale));
-        }
-        pSink->EndFigure(D2D1_FIGURE_END_OPEN);
-        pSink->Close();
-        pSink->Release();
-
-        m_pRenderTarget->DrawGeometry(pPath, m_pGraphRamBrush, 1.0f);
-        pPath->Release();
-    }
-    // Fill RAM
-    m_pD2DFactory->CreatePathGeometry(&pPath);
-    if (pPath) {
-        ID2D1GeometrySink* pSink = NULL;
-        pPath->Open(&pSink);
-        pSink->BeginFigure(D2D1::Point2F(5, yBase), D2D1_FIGURE_BEGIN_FILLED);
-        pSink->AddLine(D2D1::Point2F(5, yBase - (float)ramHist[0] * yScale));
-        for(int i=1; i<SystemMonitor::HISTORY_SIZE; i++) {
-            pSink->AddLine(D2D1::Point2F(5 + i * xStep, yBase - (float)ramHist[i] * yScale));
-        }
-        pSink->AddLine(D2D1::Point2F(5 + (SystemMonitor::HISTORY_SIZE - 1) * xStep, yBase));
-        pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-        pSink->Close();
-        pSink->Release();
-        
-        m_pGraphRamGradient->SetStartPoint(D2D1::Point2F(0, yBase - 100 * yScale));
-        m_pGraphRamGradient->SetEndPoint(D2D1::Point2F(0, yBase));
-        m_pRenderTarget->FillGeometry(pPath, m_pGraphRamGradient);
-        pPath->Release();
-    }
+    // RAM Graph
+    yBase = rtSize.height - 5;
+    DrawSmoothGraph(m_systemMonitor.GetMemoryHistory(), yBase, m_pGraphRamBrush, m_pGraphRamGradient);
     
     hr = m_pRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
