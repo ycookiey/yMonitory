@@ -1,6 +1,7 @@
 #include "OverlayWindow.h"
 #include "yMonitory.h"
 #include "resource.h" 
+#include "resource.h"
 #include <math.h>
 #include <sstream>
 #include <iomanip>
@@ -56,7 +57,9 @@ bool OverlayWindow::Initialize(HINSTANCE hInstance) {
     m_hInstance = hInstance;
     m_systemMonitor.Initialize();
 
-    if (FAILED(CreateDeviceIndependentResources())) return false;
+    if (FAILED(CreateDeviceIndependentResources())) {
+        return false;
+    }
 
     // Window Class
     WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
@@ -93,7 +96,9 @@ bool OverlayWindow::Initialize(HINSTANCE hInstance) {
         this
     );
 
-    if (!m_hwnd) return false;
+    if (!m_hwnd) {
+        return false;
+    }
 
     // Setup Timer for Update
     SetTimer(m_hwnd, 1, g_Config.updateIntervalMs, NULL);
@@ -101,6 +106,7 @@ bool OverlayWindow::Initialize(HINSTANCE hInstance) {
     SetTimer(m_hwnd, 2, 50, NULL); 
 
     ShowWindow(m_hwnd, SW_SHOW);
+    SetLayeredWindowAttributes(m_hwnd, 0, (BYTE)m_currentOpacity, LWA_ALPHA);
     UpdateWindow(m_hwnd);
 
     AddTrayIcon();
@@ -302,8 +308,10 @@ void OverlayWindow::OnResize(UINT width, UINT height) {
 HRESULT OverlayWindow::OnRender() {
     HRESULT hr = S_OK;
     hr = CreateDeviceResources();
-    if (FAILED(hr)) return hr;
-
+    if (FAILED(hr)) {
+        return hr;
+    }
+    
     m_pRenderTarget->BeginDraw();
     m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
     
@@ -427,21 +435,18 @@ HRESULT OverlayWindow::OnRender() {
                 
                 pSink->AddLine(D2D1::Point2F(5 + (SystemMonitor::HISTORY_SIZE - 1) * xStep, yBasePos)); // Down to bottom-right
                 pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-                pSink->Close();
+                pSink->Close(); // TODO: Check result
                 pSink->Release();
                 
+                
                 // Adjust gradient
-                if (auto grad = dynamic_cast<ID2D1LinearGradientBrush*>(fillBrush)) {
+                // dynamic_cast can crash if RTTI is disabled or on certain COM boundaries. 
+                // We know we passed LinearGradientBrush. Use static_cast.
+                if (fillBrush) { // We already checked fillBrush above
+                     ID2D1LinearGradientBrush* grad = static_cast<ID2D1LinearGradientBrush*>(fillBrush);
                      grad->SetStartPoint(D2D1::Point2F(0, yBasePos - 100 * yScale));
                      grad->SetEndPoint(D2D1::Point2F(0, yBasePos));
                 }
-                // We passed generic brush, but we know it's gradient in context. 
-                // Casting might be unsafe if not checked, but here we control usage.
-                // However, ID2D1Brush doesn't have SetStartPoint. We need to pass the gradient brush specifically or cast carefully.
-                // Let's rely on caller (DrawSmoothGraph) assuming the brush is already configured or we cast strictly.
-                // C-style cast for interface pointer is valid for D2D derived standard.
-                ((ID2D1LinearGradientBrush*)fillBrush)->SetStartPoint(D2D1::Point2F(0, yBasePos - 50)); 
-                ((ID2D1LinearGradientBrush*)fillBrush)->SetEndPoint(D2D1::Point2F(0, yBasePos));
 
                 m_pRenderTarget->FillGeometry(pFillPath, fillBrush);
                 pFillPath->Release();
