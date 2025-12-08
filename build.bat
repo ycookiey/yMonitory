@@ -15,7 +15,7 @@ timeout /t 1 /nobreak >nul
 if not exist build mkdir build
 
 set SOURCES=src\main.cpp src\Config.cpp src\SystemMonitor.cpp src\OverlayWindow.cpp
-set LIBS=user32.lib gdi32.lib shell32.lib pdh.lib d2d1.lib dwrite.lib
+set LIBS=user32.lib gdi32.lib shell32.lib pdh.lib d2d1.lib dwrite.lib advapi32.lib
 set OUT_EXE=build\yMonitory.exe
 
 echo [Build] Compiling...

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <filesystem>
 #include <map>
+#include <winreg.h>
 
 AppConfig g_Config;
 
@@ -63,11 +64,43 @@ void AppConfig::Load() {
         else if (key == L"ColorBackground") colorBackground = value;
         else if (key == L"ColorGraphCpu") colorGraphCpu = value;
         else if (key == L"ColorGraphRam") colorGraphRam = value;
+        else if (key == L"ColorGraphCpu") colorGraphCpu = value;
+        else if (key == L"ColorGraphRam") colorGraphRam = value;
         else if (key == L"GhostModeEnabled") ghostModeEnabled = ParseBool(value, ghostModeEnabled);
+    }
+
+    // Check Registry for Startup
+    HKEY hKey;
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        WCHAR path[MAX_PATH];
+        DWORD size = sizeof(path);
+        if (RegQueryValueEx(hKey, yMonitory::APP_NAME, NULL, NULL, (LPBYTE)path, &size) == ERROR_SUCCESS) {
+            runOnStartup = true;
+        } else {
+            runOnStartup = false;
+        }
+        RegCloseKey(hKey);
+    }
+}
+
+void SetStartupRegistry(bool enable) {
+    HKEY hKey;
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_WRITE, &hKey) == ERROR_SUCCESS) {
+        if (enable) {
+            WCHAR path[MAX_PATH];
+            GetModuleFileName(NULL, path, MAX_PATH);
+            RegSetValueEx(hKey, yMonitory::APP_NAME, 0, REG_SZ, (LPBYTE)path, (DWORD)(wcslen(path) + 1) * sizeof(WCHAR));
+        } else {
+            RegDeleteValue(hKey, yMonitory::APP_NAME);
+        }
+        RegCloseKey(hKey);
     }
 }
 
 void AppConfig::Save() const {
+    // Save registry setting
+    SetStartupRegistry(runOnStartup);
+
     WCHAR path[MAX_PATH];
     GetModuleFileName(NULL, path, MAX_PATH);
     std::filesystem::path exePath(path);

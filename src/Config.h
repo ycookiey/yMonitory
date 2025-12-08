@@ -18,6 +18,7 @@ struct AppConfig {
     std::wstring colorGraphRam = L"#FF00FF80";
 
     bool ghostModeEnabled = true;
+    bool runOnStartup = false;
 
     // Load from config.ini
     void Load();

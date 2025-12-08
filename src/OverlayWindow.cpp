@@ -266,6 +266,10 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, 
             if (LOWORD(wParam) == ID_MENU_EXIT) {
                 DestroyWindow(hWnd);
             }
+            else if (LOWORD(wParam) == ID_MENU_STARTUP) {
+                g_Config.runOnStartup = !g_Config.runOnStartup;
+                g_Config.Save(); // Triggers registry update
+            }
             return 0;
         case WM_NCHITTEST:
              // To allow dragging, we need to return HTCAPTION when clicking background
@@ -523,6 +527,10 @@ void OverlayWindow::RemoveTrayIcon() {
 
 void OverlayWindow::ShowContextMenu(int x, int y) {
     HMENU hMenu = CreatePopupMenu();
+    
+    // Startup Checkbox
+    AppendMenu(hMenu, MF_STRING | (g_Config.runOnStartup ? MF_CHECKED : MF_UNCHECKED), ID_MENU_STARTUP, L"スタートアップ登録");
+    AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, ID_MENU_EXIT, L"Exit");
     
     TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, x, y, 0, m_hwnd, NULL);
