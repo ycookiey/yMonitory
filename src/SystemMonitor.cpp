@@ -6,7 +6,15 @@
 // Typedef for dynamic linking if we wanted to be super safe, but we link pdh.lib so it should be fine.
 // Actually PdhAddEnglishCounterW is standard in Windows 10 SDK.
 
-SystemMonitor::SystemMonitor() {
+SystemMonitor::SystemMonitor() : 
+    m_queryHandle(NULL),
+    m_cpuCounter(NULL),
+    m_memCounter(NULL),
+    m_cpuUsage(0.0),
+    m_memoryUsagePercent(0.0)
+{
+    std::fill(std::begin(m_cpuHistory), std::end(m_cpuHistory), 0.0);
+    std::fill(std::begin(m_memoryHistory), std::end(m_memoryHistory), 0.0);
 }
 
 SystemMonitor::~SystemMonitor() {
