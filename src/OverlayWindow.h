@@ -41,8 +41,9 @@ private:
     HRESULT OnRender();
 
     // Logic
-    void OnTimer(); // Called periodically for update
-    void UpdateGhostMode(); // Check mouse distance
+    void OnTimer();
+    // Toggles click-through with Ctrl and fades the window near the pointer.
+    void UpdateGhostMode();
     void ShowContextMenu(int x, int y);
     void AddTrayIcon();
     void RemoveTrayIcon();
@@ -67,7 +68,7 @@ private:
     SystemMonitor m_systemMonitor;
 
     // State
-    bool m_isDragEnabled = false; // Stealth UX: Ctrl pressed?
+    bool m_isDragEnabled = false; // True while Ctrl is held
     POINT m_lastMousePos = {0, 0};
     int m_currentOpacity = 255;
 };

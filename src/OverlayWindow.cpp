@@ -1,13 +1,11 @@
 #include "OverlayWindow.h"
 #include "yMonitory.h"
-#include "resource.h" 
 #include "resource.h"
 #include <math.h>
 #include <sstream>
 #include <iomanip>
 
-// Helper to parse hex color string to D2D1_COLOR_F
-// Format: #RRGGBBAA or #RRGGBB
+// Accepts #RRGGBBAA or #RRGGBB. Anything else falls back to white.
 static D2D1_COLOR_F ParseColor(const std::wstring& hex) {
     if (hex.empty() || hex[0] != L'#') return D2D1::ColorF(D2D1::ColorF::White);
     
@@ -17,7 +15,7 @@ static D2D1_COLOR_F ParseColor(const std::wstring& hex) {
     } catch(...) { return D2D1::ColorF(D2D1::ColorF::White); }
 
     float r, g, b, a = 1.0f;
-    if (hex.length() > 7) { // With Alpha
+    if (hex.length() > 7) {
         r = ((value >> 24) & 0xFF) / 255.0f;
         g = ((value >> 16) & 0xFF) / 255.0f;
         b = ((value >> 8) & 0xFF) / 255.0f;
@@ -61,33 +59,32 @@ bool OverlayWindow::Initialize(HINSTANCE hInstance) {
         return false;
     }
 
-    // Window Class
     WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
     wcex.style = CS_HREDRAW | CS_VREDRAW;
     wcex.lpfnWndProc = OverlayWindow::WndProc;
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = sizeof(LONG_PTR);
     wcex.hInstance = hInstance;
-    wcex.hbrBackground = NULL; // Handle background in D2D
+    wcex.hbrBackground = NULL; // The background is drawn with Direct2D
     wcex.lpszMenuName = NULL;
     wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
     wcex.lpszClassName = yMonitory::WINDOW_CLASS_NAME;
 
     RegisterClassEx(&wcex);
 
-    // Initial Position
+    // -1 places the window near the top-right corner of the primary monitor.
     int x = (g_Config.x == -1) ? (GetSystemMetrics(SM_CXSCREEN) - g_Config.width - 20) : g_Config.x;
     int y = (g_Config.y == -1) ? 20 : g_Config.y;
 
-    // Window Style: Layered, ToolWindow (no taskbar), TopMost
-    // Initial style includes TRANSPARENT for click-through
+    // WS_EX_TOOLWINDOW keeps the window off the taskbar. WS_EX_TRANSPARENT lets
+    // clicks pass through until Ctrl is held (see UpdateGhostMode).
     DWORD exStyle = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT;
     
     m_hwnd = CreateWindowEx(
         exStyle,
         yMonitory::WINDOW_CLASS_NAME,
         yMonitory::APP_NAME,
-        WS_POPUP, // Frameless
+        WS_POPUP,
         x, y,
         g_Config.width, g_Config.height,
         NULL,
@@ -100,10 +97,10 @@ bool OverlayWindow::Initialize(HINSTANCE hInstance) {
         return false;
     }
 
-    // Setup Timer for Update
+    // Timer 1 samples the counters. Timer 2 runs faster so that the fade and
+    // the Ctrl check react without waiting for the next sample.
     SetTimer(m_hwnd, 1, g_Config.updateIntervalMs, NULL);
-    // Setup Timer for Ghost Mode / Animation (higher fps)
-    SetTimer(m_hwnd, 2, 50, NULL); 
+    SetTimer(m_hwnd, 2, 50, NULL);
 
     ShowWindow(m_hwnd, SW_SHOW);
     SetLayeredWindowAttributes(m_hwnd, 0, (BYTE)m_currentOpacity, LWA_ALPHA);
@@ -125,7 +122,7 @@ HRESULT OverlayWindow::CreateDeviceIndependentResources() {
     }
     if (SUCCEEDED(hr)) {
         hr = m_pDWriteFactory->CreateTextFormat(
-            L"Segoe UI", // Fallback font, ideally use config
+            L"Segoe UI",
             NULL,
             DWRITE_FONT_WEIGHT_NORMAL,
             DWRITE_FONT_STYLE_NORMAL,
@@ -164,21 +161,21 @@ HRESULT OverlayWindow::CreateDeviceResources() {
             hr = m_pRenderTarget->CreateSolidColorBrush(ParseColor(g_Config.colorGraphRam), &m_pGraphRamBrush);
         }
 
-        // Create Gradients
+        // The gradient's start and end points are set per graph in OnRender.
         if (SUCCEEDED(hr)) {
             D2D1_GRADIENT_STOP stops[2];
             D2D1_COLOR_F col = ParseColor(g_Config.colorGraphCpu);
             stops[0].color = col;
             stops[0].position = 0.0f;
-            stops[1].color = col; 
-            stops[1].color.a = 0.0f; // Fade out
+            stops[1].color = col;
+            stops[1].color.a = 0.0f;
             stops[1].position = 1.0f;
 
             ID2D1GradientStopCollection* pStops = NULL;
             hr = m_pRenderTarget->CreateGradientStopCollection(stops, 2, &pStops);
             if (SUCCEEDED(hr)) {
                 hr = m_pRenderTarget->CreateLinearGradientBrush(
-                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(0, size.height)), // Temp range
+                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(0, size.height)),
                     pStops,
                     &m_pGraphCpuGradient
                 );
@@ -190,8 +187,8 @@ HRESULT OverlayWindow::CreateDeviceResources() {
             D2D1_COLOR_F col = ParseColor(g_Config.colorGraphRam);
             stops[0].color = col;
             stops[0].position = 0.0f;
-            stops[1].color = col; 
-            stops[1].color.a = 0.0f; // Fade out
+            stops[1].color = col;
+            stops[1].color.a = 0.0f;
             stops[1].position = 1.0f;
 
             ID2D1GradientStopCollection* pStops = NULL;
@@ -247,7 +244,7 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, 
             return 0;
         case WM_TIMER:
             if (wParam == 1) pThis->OnTimer();
-            if (wParam == 2) pThis->UpdateGhostMode(); // Separated for smooth opacity/checking
+            if (wParam == 2) pThis->UpdateGhostMode();
             return 0;
         case WM_DESTROY:
             pThis->RemoveTrayIcon();
@@ -274,26 +271,19 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, 
             }
             else if (LOWORD(wParam) == ID_MENU_STARTUP) {
                 g_Config.runOnStartup = !g_Config.runOnStartup;
-                g_Config.Save(); // Triggers registry update
+                g_Config.Save(); // Save also writes the Run registry value
             }
             return 0;
         case WM_NCHITTEST:
-             // To allow dragging, we need to return HTCAPTION when clicking background
-             // But we are TRANSPARENT by default.
-             // When Ctrl-mode is active, we remove TRANSPARENT, so this is called.
-             // We can return HTCAPTION to allow dragging anywhere.
-             // return HTCAPTION; // Disabled to handle clicks manually
-             return HTCLIENT; 
+             // HTCLIENT rather than HTCAPTION, so that a right click reaches
+             // WM_RBUTTONUP and opens the menu. Dragging starts from WM_LBUTTONDOWN.
+             return HTCLIENT;
         case WM_LBUTTONDOWN:
              if (pThis->m_isDragEnabled) {
                  ReleaseCapture();
                  SendMessage(hWnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
              }
              return 0;
-        case WM_KEYDOWN:
-             // This might not be received if we don't have focus, 
-             // but UpdateGhostMode checks GetAsyncKeyState for global Ctrl detection.
-             break;
         }
     }
     return DefWindowProc(hWnd, message, wParam, lParam);
@@ -315,21 +305,14 @@ HRESULT OverlayWindow::OnRender() {
     m_pRenderTarget->BeginDraw();
     m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
     
-    // Background color
+    // The window-wide opacity (Opacity and the ghost fade) comes from
+    // SetLayeredWindowAttributes. The background is a filled rectangle drawn here.
     D2D1_COLOR_F bgCol = ParseColor(g_Config.colorBackground);
-    // Apply opacity (premultiplied alpha manual calculation not needed if we use Clear with a color that has alpha?
-    // D2D1 RenderTarget "Clear" ignores the alpha if window is Layered?
-    // For UpdateLayeredWindow with alpha, we usually need to draw to GDI surface or use D3D/D2D interop.
-    // BUT, SetLayeredWindowAttributes uses a global alpha.
-    // We want per-pixel alpha (for rounded corners or transparent bg).
-    // Simple approach: Use SetLayeredWindowAttributes for the global "Ghost Mode" opacity.
-    // And for background color, just draw a rectangle.
-    
-    m_pRenderTarget->Clear(D2D1::ColorF(0, 0.0f)); // Clear to fully transparent
+
+    m_pRenderTarget->Clear(D2D1::ColorF(0, 0.0f));
 
     D2D1_SIZE_F rtSize = m_pRenderTarget->GetSize();
-    
-    // Draw Background
+
     ID2D1SolidColorBrush* pBgBrush = NULL;
     hr = m_pRenderTarget->CreateSolidColorBrush(bgCol, &pBgBrush);
     
@@ -338,7 +321,6 @@ HRESULT OverlayWindow::OnRender() {
         pBgBrush->Release();
     }
 
-    // Draw Text
     std::wstringstream ss;
     ss << L"CPU: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetCpuUsage() << L"%\n";
     ss << L"RAM: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetMemoryUsagePercent() << L"%";
@@ -352,18 +334,15 @@ HRESULT OverlayWindow::OnRender() {
         m_pTextBrush
     );
 
-    // Draw Graphs (Smooth Bezier)
-    
-    // CPU Graph
+    // CPU in the top half, memory in the bottom half. 0-100% maps to the half's height.
     const double* cpuHist = m_systemMonitor.GetCpuHistory();
     float xStep = (rtSize.width - 10) / (SystemMonitor::HISTORY_SIZE - 1);
     float yBase = rtSize.height / 2 - 5;
-    float yScale = (rtSize.height / 2 - 10) / 100.0f; // Scale to fit half height
+    float yScale = (rtSize.height / 2 - 10) / 100.0f;
 
     auto DrawSmoothGraph = [&](const double* data, float yBasePos, ID2D1Brush* strokeBrush, ID2D1Brush* fillBrush) {
         if (!strokeBrush) return;
 
-        // Create Path
         ID2D1PathGeometry* pPath = NULL;
         m_pD2DFactory->CreatePathGeometry(&pPath);
         if (!pPath) return;
@@ -372,32 +351,11 @@ HRESULT OverlayWindow::OnRender() {
         pPath->Open(&pSink);
 
         D2D1_POINT_2F p0 = D2D1::Point2F(5, yBasePos - (float)data[0] * yScale);
-        pSink->BeginFigure(p0, D2D1_FIGURE_BEGIN_FILLED); // Filled for gradient, we will just stroke it later if fill is null? 
-        // Actually we need two paths: one for stroke (HOLLOW), one for fill (FILLED)
-        
-        // Simplified Logic: Just draw straight lines for now, but use Bezier?
-        // True Bezier requires control points.
-        // Simple smoothing: Catmull-Rom or just midpoint bezier.
-        // Let's use a simple approach: Line to each point? No, user asked for smooth.
-        
-        // Bezier interpolation logic:
-        // For p[i] to p[i+1], control points c1, c2.
-        // c1 = p[i] + (p[i+1] - p[i-1]) * tension
-        // But we need previous points.
-        
-        // Let's implement a simple "add line" for now, but if we want smooth, we use AddBezier.
-        // Since implementing full spline in one go without helper class is verbose, 
-        // I will stick to the previous implementation but add a small smoothing if possible,
-        // OR essentially, replace the loop with AddBezier.
-        
-        // RE-IMPLEMENTATION: Using a simple heuristic for control points (Horizontal smoothing)
-        // cp1 = current + (next.x - prev.x) * favor, etc.
-        // For simplicity in this tool, assume X is constant step.
-        
-        // Let's try drawing with Beziers from i to i+1.
-        // Control points: (x_i + step/2, y_i), (x_{i+1} - step/2, y_{i+1})
-        // This creates a smooth curve that is horizontal at each data point.
-        
+        pSink->BeginFigure(p0, D2D1_FIGURE_BEGIN_FILLED);
+
+        // Control points half a step away horizontally give a curve that is flat at
+        // every sample, so it never overshoots 0% or 100% between samples.
+        // The open curve is stroked; a separate closed path below is filled.
         for(int i=0; i<SystemMonitor::HISTORY_SIZE - 1; i++) {
              D2D1_POINT_2F pStart = D2D1::Point2F(5 + i * xStep, yBasePos - (float)data[i] * yScale);
              D2D1_POINT_2F pEnd = D2D1::Point2F(5 + (i+1) * xStep, yBasePos - (float)data[i+1] * yScale);
@@ -412,19 +370,16 @@ HRESULT OverlayWindow::OnRender() {
         pSink->Close();
         pSink->Release();
         
-        // Stroke
-        m_pRenderTarget->DrawGeometry(pPath, strokeBrush, 1.5f); // Thicker line
+        m_pRenderTarget->DrawGeometry(pPath, strokeBrush, 1.5f);
 
-        // Fill (Gradient)
         if (fillBrush) {
             ID2D1PathGeometry* pFillPath = NULL;
             m_pD2DFactory->CreatePathGeometry(&pFillPath);
             if(pFillPath) {
                 pFillPath->Open(&pSink);
-                pSink->BeginFigure(D2D1::Point2F(5, yBasePos), D2D1_FIGURE_BEGIN_FILLED); // Start bottom-left
-                pSink->AddLine(p0); // Up to first point
-                
-                // Trace curve again
+                pSink->BeginFigure(D2D1::Point2F(5, yBasePos), D2D1_FIGURE_BEGIN_FILLED);
+                pSink->AddLine(p0);
+
                 for(int i=0; i<SystemMonitor::HISTORY_SIZE - 1; i++) {
                      D2D1_POINT_2F pStart = D2D1::Point2F(5 + i * xStep, yBasePos - (float)data[i] * yScale);
                      D2D1_POINT_2F pEnd = D2D1::Point2F(5 + (i+1) * xStep, yBasePos - (float)data[i+1] * yScale);
@@ -433,16 +388,15 @@ HRESULT OverlayWindow::OnRender() {
                      pSink->AddBezier(D2D1::BezierSegment(c1, c2, pEnd));
                 }
                 
-                pSink->AddLine(D2D1::Point2F(5 + (SystemMonitor::HISTORY_SIZE - 1) * xStep, yBasePos)); // Down to bottom-right
+                pSink->AddLine(D2D1::Point2F(5 + (SystemMonitor::HISTORY_SIZE - 1) * xStep, yBasePos));
                 pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
                 pSink->Close(); // TODO: Check result
                 pSink->Release();
-                
-                
-                // Adjust gradient
-                // dynamic_cast can crash if RTTI is disabled or on certain COM boundaries. 
-                // We know we passed LinearGradientBrush. Use static_cast.
-                if (fillBrush) { // We already checked fillBrush above
+
+
+                // static_cast, not dynamic_cast: Direct2D objects carry no RTTI that
+                // dynamic_cast can rely on. Both callers pass a linear gradient brush.
+                if (fillBrush) {
                      ID2D1LinearGradientBrush* grad = static_cast<ID2D1LinearGradientBrush*>(fillBrush);
                      grad->SetStartPoint(D2D1::Point2F(0, yBasePos - 100 * yScale));
                      grad->SetEndPoint(D2D1::Point2F(0, yBasePos));
@@ -457,7 +411,6 @@ HRESULT OverlayWindow::OnRender() {
 
     DrawSmoothGraph(cpuHist, yBase, m_pGraphCpuBrush, m_pGraphCpuGradient);
     
-    // RAM Graph
     yBase = rtSize.height - 5;
     DrawSmoothGraph(m_systemMonitor.GetMemoryHistory(), yBase, m_pGraphRamBrush, m_pGraphRamGradient);
     
@@ -475,23 +428,20 @@ void OverlayWindow::OnTimer() {
 }
 
 void OverlayWindow::UpdateGhostMode() {
-    // 1. Check Ctrl key for interaction mode
+    // GetAsyncKeyState, because the overlay usually has no keyboard focus to receive WM_KEYDOWN.
     bool isCtrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    
+
     if (isCtrlPressed != m_isDragEnabled) {
         m_isDragEnabled = isCtrlPressed;
-        // Toggle TRANSPARENT style
         LONG exStyle = GetWindowLong(m_hwnd, GWL_EXSTYLE);
         if (m_isDragEnabled) {
-             exStyle &= ~WS_EX_TRANSPARENT; // Enable mouse input
+             exStyle &= ~WS_EX_TRANSPARENT;
         } else {
-             exStyle |= WS_EX_TRANSPARENT; // Click through
+             exStyle |= WS_EX_TRANSPARENT;
         }
         SetWindowLong(m_hwnd, GWL_EXSTYLE, exStyle);
-        // Force repaint/update to ensure style change takes effect? usually automatic
     }
 
-    // 2. Ghost Mode Opacity Calculation
     int targetOpacity = g_Config.opacity;
     if (g_Config.ghostModeEnabled && !m_isDragEnabled) {
         POINT pt;
@@ -499,7 +449,7 @@ void OverlayWindow::UpdateGhostMode() {
         RECT rc;
         GetWindowRect(m_hwnd, &rc);
         
-        // Calculate distance from window
+        // Horizontal plus vertical distance from the window's edge; 0 inside it.
         int dist = 0;
         if (pt.x < rc.left) dist += (rc.left - pt.x);
         else if (pt.x > rc.right) dist += (pt.x - rc.right);
@@ -507,26 +457,22 @@ void OverlayWindow::UpdateGhostMode() {
         if (pt.y < rc.top) dist += (rc.top - pt.y);
         else if (pt.y > rc.bottom) dist += (pt.y - rc.bottom);
 
-        // If distance < 100px, fade out
+        // Within 100 px, fade linearly from Opacity down to 10.
         if (dist < 100) {
-            // Map 0-100 distance to 10-Config.opacity
-            // Closer = more transparent
-            // dist=0 -> opacity=10 (almost invisible)
-            // dist=100 -> opacity=Config.opacity
             targetOpacity = 10 + (int)((g_Config.opacity - 10) * (dist / 100.0f));
         }
     }
 
-    // Smooth transition
     if (m_currentOpacity != targetOpacity) {
-        int step = 25; // Faster fade (was 15)
+        int step = 25;
         if (m_currentOpacity < targetOpacity) m_currentOpacity = min(m_currentOpacity + step, targetOpacity);
         else m_currentOpacity = max(m_currentOpacity - step, targetOpacity);
         
         SetLayeredWindowAttributes(m_hwnd, 0, (BYTE)m_currentOpacity, LWA_ALPHA);
         
-        // Save position if dragging happened? 
-        // Better to check if window moved OnExit or periodically if drag is done.
+        // TODO: The position is recorded only while the opacity is still changing,
+        // which ends a few hundred ms after Ctrl is pressed. The end of a longer drag,
+        // or a drag that starts after the fade has finished, is not saved.
         if (m_isDragEnabled) {
             RECT rc;
             GetWindowRect(m_hwnd, &rc);
@@ -542,7 +488,7 @@ void OverlayWindow::AddTrayIcon() {
     nid.uID = ID_TRAY_ICON;
     nid.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
     nid.uCallbackMessage = WM_TRAYICON;
-    nid.hIcon = LoadIcon(NULL, IDI_APPLICATION); // Default icon
+    nid.hIcon = LoadIcon(NULL, IDI_APPLICATION); // TODO: Use the app's own icon once yMonitory.rc has one
     wcscpy_s(nid.szTip, L"yMonitory");
     Shell_NotifyIcon(NIM_ADD, &nid);
 }
@@ -557,7 +503,6 @@ void OverlayWindow::RemoveTrayIcon() {
 void OverlayWindow::ShowContextMenu(int x, int y) {
     HMENU hMenu = CreatePopupMenu();
     
-    // Startup Checkbox
     AppendMenu(hMenu, MF_STRING | (g_Config.runOnStartup ? MF_CHECKED : MF_UNCHECKED), ID_MENU_STARTUP, L"スタートアップ登録");
     AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hMenu, MF_STRING, ID_MENU_EXIT, L"Exit");

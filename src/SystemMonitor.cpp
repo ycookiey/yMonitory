@@ -2,10 +2,6 @@
 #include <tchar.h>
 #include <algorithm>
 
-// Use PdhAddEnglishCounter if available (Vista+) to avoid localization issues
-// Typedef for dynamic linking if we wanted to be super safe, but we link pdh.lib so it should be fine.
-// Actually PdhAddEnglishCounterW is standard in Windows 10 SDK.
-
 SystemMonitor::SystemMonitor() : 
     m_queryHandle(NULL),
     m_cpuCounter(NULL),
@@ -28,24 +24,22 @@ bool SystemMonitor::Initialize() {
     PDH_STATUS status = PdhOpenQuery(nullptr, 0, &m_queryHandle);
     if (status != ERROR_SUCCESS) return false;
 
-    // CPU Usage (Total)
-    // English name: \Processor(_Total)\% Processor Time
+    // Counter paths are localized; PdhAddEnglishCounter accepts the English
+    // path on any display language. PdhAddCounter is the fallback.
     status = PdhAddEnglishCounter(m_queryHandle, L"\\Processor(_Total)\\% Processor Time", 0, &m_cpuCounter);
     if (status != ERROR_SUCCESS) {
-        // Fallback to standard AddCounter if English one fails (unlikely on modern Windows)
          status = PdhAddCounter(m_queryHandle, L"\\Processor(_Total)\\% Processor Time", 0, &m_cpuCounter);
          if (status != ERROR_SUCCESS) return false;
     }
 
-    // Memory Usage (Committed Bytes In Use %)
-    // English name: \Memory\% Committed Bytes In Use
+    // Committed memory as a share of the commit limit, not physical memory in use.
     status = PdhAddEnglishCounter(m_queryHandle, L"\\Memory\\% Committed Bytes In Use", 0, &m_memCounter);
     if (status != ERROR_SUCCESS) {
          status = PdhAddCounter(m_queryHandle, L"\\Memory\\% Committed Bytes In Use", 0, &m_memCounter);
          if (status != ERROR_SUCCESS) return false;
     }
 
-    // Initial collect
+    // Rate counters such as % Processor Time need a first sample to compare against.
     PdhCollectQueryData(m_queryHandle);
     return true;
 }
@@ -58,13 +52,11 @@ void SystemMonitor::Update() {
 
     PDH_FMT_COUNTERVALUE counterVal;
 
-    // CPU
     status = PdhGetFormattedCounterValue(m_cpuCounter, PDH_FMT_DOUBLE, nullptr, &counterVal);
     if (status == ERROR_SUCCESS) {
         m_cpuUsage = counterVal.doubleValue;
     }
 
-    // Memory
     status = PdhGetFormattedCounterValue(m_memCounter, PDH_FMT_DOUBLE, nullptr, &counterVal);
     if (status == ERROR_SUCCESS) {
         m_memoryUsagePercent = counterVal.doubleValue;
@@ -74,8 +66,8 @@ void SystemMonitor::Update() {
 }
 
 void SystemMonitor::PushHistory(double cpu, double mem) {
-    // Shift history (simple implementation)
-    // Optimization: Ring buffer is better, but shifting 60 doubles is negligible.
+    // Shifting instead of a ring buffer keeps the arrays in drawing order.
+    // Moving 60 values per sample is negligible work.
     for (int i = 0; i < HISTORY_SIZE - 1; i++) {
         m_cpuHistory[i] = m_cpuHistory[i + 1];
         m_memoryHistory[i] = m_memoryHistory[i + 1];

@@ -4,7 +4,6 @@
 #include <windows.h>
 #include <tchar.h>
 
-// Application Constants
 namespace yMonitory {
     constexpr const TCHAR* APP_NAME = _T("yMonitory");
     constexpr const TCHAR* WINDOW_CLASS_NAME = _T("yMonitory_OverlayClass");

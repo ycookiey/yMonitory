@@ -1,10 +1,8 @@
 #include "resource.h"
 #include <windows.h>
 
-// Icon (Placeholder for now, standard application icon)
-// IDI_TRAYICON ICON "icon.ico" // Uncomment when icon is available
+// TODO: Add an application icon, e.g. IDI_TRAYICON ICON "icon.ico"
 
-// Version Info
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION 1,0,0,0
 PRODUCTVERSION 1,0,0,0

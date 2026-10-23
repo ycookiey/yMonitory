@@ -1,7 +1,5 @@
 #pragma once
 
 #define IDI_TRAYICON 101
-#define IDR_CONTEXT_MENU 102
-#define ID_MENU_CONFIG 40001
 #define ID_MENU_EXIT 40002
 #define ID_MENU_STARTUP 40003
