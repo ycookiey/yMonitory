@@ -1,11 +1,14 @@
 #include "resource.h"
 #include <windows.h>
 
-// TODO: Add an application icon, e.g. IDI_TRAYICON ICON "icon.ico"
+// Icons (the exe icon comes first so Explorer uses it)
+IDI_APP        ICON "app.ico"
+IDI_TRAY_DARK  ICON "tray-dark.ico"
+IDI_TRAY_LIGHT ICON "tray-light.ico"
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,0,0,0
-PRODUCTVERSION 1,0,0,0
+FILEVERSION 1,1,0,0
+PRODUCTVERSION 1,1,0,0
 FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
 FILEFLAGS 0x1L
@@ -22,12 +25,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "yMonitory Project"
             VALUE "FileDescription", "yMonitory System Monitor"
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileVersion", "1.1.0.0"
             VALUE "InternalName", "yMonitory"
             VALUE "LegalCopyright", "Copyright (C) 2025"
             VALUE "OriginalFilename", "yMonitory.exe"
             VALUE "ProductName", "yMonitory"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "ProductVersion", "1.1.0.0"
         END
     END
     BLOCK "VarFileInfo"

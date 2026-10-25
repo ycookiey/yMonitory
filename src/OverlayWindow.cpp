@@ -31,6 +31,7 @@ static D2D1_COLOR_F ParseColor(const std::wstring& hex) {
 OverlayWindow::OverlayWindow() :
     m_hwnd(NULL),
     m_hInstance(NULL),
+    m_hTrayIcon(NULL),
     m_pD2DFactory(NULL),
     m_pRenderTarget(NULL),
     m_pTextBrush(NULL),
@@ -250,6 +251,12 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, 
             pThis->RemoveTrayIcon();
             PostQuitMessage(0);
             return 0;
+        case WM_SETTINGCHANGE:
+            // Taskbar light/dark theme changed
+            if (lParam && lstrcmpi((LPCWSTR)lParam, L"ImmersiveColorSet") == 0) {
+                pThis->UpdateTrayIcon();
+            }
+            break;
         case WM_TRAYICON:
             if (lParam == WM_RBUTTONUP) {
                 POINT pt;
@@ -488,7 +495,8 @@ void OverlayWindow::AddTrayIcon() {
     nid.uID = ID_TRAY_ICON;
     nid.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
     nid.uCallbackMessage = WM_TRAYICON;
-    nid.hIcon = LoadIcon(NULL, IDI_APPLICATION); // TODO: Use the app's own icon once yMonitory.rc has one
+    m_hTrayIcon = LoadTrayIcon();
+    nid.hIcon = m_hTrayIcon;
     wcscpy_s(nid.szTip, L"yMonitory");
     Shell_NotifyIcon(NIM_ADD, &nid);
 }
@@ -498,6 +506,40 @@ void OverlayWindow::RemoveTrayIcon() {
     nid.hWnd = m_hwnd;
     nid.uID = ID_TRAY_ICON;
     Shell_NotifyIcon(NIM_DELETE, &nid);
+    if (m_hTrayIcon) {
+        DestroyIcon(m_hTrayIcon);
+        m_hTrayIcon = NULL;
+    }
+}
+
+void OverlayWindow::UpdateTrayIcon() {
+    if (!m_hTrayIcon) return; // Tray icon not added yet
+
+    HICON hIcon = LoadTrayIcon();
+    if (!hIcon) return;
+
+    NOTIFYICONDATA nid = { sizeof(nid) };
+    nid.hWnd = m_hwnd;
+    nid.uID = ID_TRAY_ICON;
+    nid.uFlags = NIF_ICON;
+    nid.hIcon = hIcon;
+    Shell_NotifyIcon(NIM_MODIFY, &nid);
+
+    DestroyIcon(m_hTrayIcon);
+    m_hTrayIcon = hIcon;
+}
+
+// Pick the tray icon by taskbar theme (SystemUsesLightTheme: 1 = light, 0 or missing = dark)
+HICON OverlayWindow::LoadTrayIcon() {
+    DWORD lightTheme = 0;
+    DWORD size = sizeof(lightTheme);
+    if (RegGetValue(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                    L"SystemUsesLightTheme", RRF_RT_REG_DWORD, NULL, &lightTheme, &size) != ERROR_SUCCESS) {
+        lightTheme = 0;
+    }
+    int id = (lightTheme == 1) ? IDI_TRAY_LIGHT : IDI_TRAY_DARK;
+    return (HICON)LoadImage(m_hInstance, MAKEINTRESOURCE(id), IMAGE_ICON,
+                            GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
 }
 
 void OverlayWindow::ShowContextMenu(int x, int y) {
