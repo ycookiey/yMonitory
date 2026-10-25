@@ -10,7 +10,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // Load Config
     g_Config.Load();
 
     OverlayWindow overlay;
@@ -19,9 +18,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     }
 
     overlay.RunMessageLoop();
-    // Message loop is inside RunMessageLoop
 
-    // Save Config on exit
     g_Config.Save();
 
     return 0;

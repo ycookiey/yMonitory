@@ -6,7 +6,6 @@ IDI_APP        ICON "app.ico"
 IDI_TRAY_DARK  ICON "tray-dark.ico"
 IDI_TRAY_LIGHT ICON "tray-light.ico"
 
-// Version Info
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION 1,1,0,0
 PRODUCTVERSION 1,1,0,0

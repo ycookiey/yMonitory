@@ -3,15 +3,14 @@
 #include <windows.h>
 
 struct AppConfig {
-    int x = -1; // -1 means default/center
+    int x = -1; // -1 places the window near the top-right corner
     int y = -1;
     int width = 200;
     int height = 100;
     int opacity = 200; // 0-255
     int updateIntervalMs = 1000;
-    
-    // Colors (RGBA 0xRRGGBBAA format for simplicity in internal logic, but hex string in file)
-    // Using D2D1_COLOR_F essentially, but storing as hex strings for easy parsing
+
+    // "#RRGGBBAA" or "#RRGGBB", kept as written in config.ini and parsed when drawing.
     std::wstring colorText = L"#FFFFFFFF";
     std::wstring colorBackground = L"#00000080";
     std::wstring colorGraphCpu = L"#00FFFF80";
@@ -20,9 +19,9 @@ struct AppConfig {
     bool ghostModeEnabled = true;
     bool runOnStartup = false;
 
-    // Load from config.ini
+    // config.ini sits next to the executable.
     void Load();
-    // Save to config.ini
+    // Also adds or removes the HKCU Run value according to runOnStartup.
     void Save() const;
 };
 

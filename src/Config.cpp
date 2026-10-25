@@ -8,7 +8,6 @@
 
 AppConfig g_Config;
 
-// Helper to trim whitespace
 static std::wstring Trim(const std::wstring& str) {
     size_t first = str.find_first_not_of(L" \t\r\n");
     if (std::wstring::npos == first) return L"";
@@ -16,7 +15,6 @@ static std::wstring Trim(const std::wstring& str) {
     return str.substr(first, (last - first + 1));
 }
 
-// Helper to convert wstring to int with default
 static int ParseInt(const std::wstring& str, int def) {
     try {
         return std::stoi(str);
@@ -25,7 +23,6 @@ static int ParseInt(const std::wstring& str, int def) {
     }
 }
 
-// Helper to parse bool
 static bool ParseBool(const std::wstring& str, bool def) {
     std::wstring lower = str;
     for (auto& c : lower) c = towlower(c);
@@ -35,7 +32,6 @@ static bool ParseBool(const std::wstring& str, bool def) {
 }
 
 void AppConfig::Load() {
-    // Get executable path
     WCHAR path[MAX_PATH];
     GetModuleFileName(NULL, path, MAX_PATH);
     std::filesystem::path exePath(path);
@@ -67,7 +63,7 @@ void AppConfig::Load() {
         else if (key == L"GhostModeEnabled") ghostModeEnabled = ParseBool(value, ghostModeEnabled);
     }
 
-    // Check Registry for Startup
+    // runOnStartup is not kept in config.ini. The Run value is its only record.
     HKEY hKey;
     if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
         WCHAR path[MAX_PATH];
@@ -96,7 +92,6 @@ void SetStartupRegistry(bool enable) {
 }
 
 void AppConfig::Save() const {
-    // Save registry setting
     SetStartupRegistry(runOnStartup);
 
     WCHAR path[MAX_PATH];
