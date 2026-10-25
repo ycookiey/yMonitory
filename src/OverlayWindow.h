@@ -46,9 +46,12 @@ private:
     void ShowContextMenu(int x, int y);
     void AddTrayIcon();
     void RemoveTrayIcon();
+    void UpdateTrayIcon(); // Swap icon after a taskbar theme change
+    HICON LoadTrayIcon();
 
     HWND m_hwnd;
     HINSTANCE m_hInstance;
+    HICON m_hTrayIcon;
 
     // Direct2D Resources
     ID2D1Factory* m_pD2DFactory;
