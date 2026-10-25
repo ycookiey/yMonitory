@@ -1,8 +1,10 @@
 #include "resource.h"
 #include <windows.h>
 
-// Icon (Placeholder for now, standard application icon)
-// IDI_TRAYICON ICON "icon.ico" // Uncomment when icon is available
+// Icons (the exe icon comes first so Explorer uses it)
+IDI_APP        ICON "app.ico"
+IDI_TRAY_DARK  ICON "tray-dark.ico"
+IDI_TRAY_LIGHT ICON "tray-light.ico"
 
 // Version Info
 VS_VERSION_INFO VERSIONINFO
