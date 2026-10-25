@@ -1,6 +1,6 @@
 # yMonitory
 
-[日本語](README.ja.md)
+[日本語版 README](README.ja.md)
 
 A small always-on-top overlay for Windows that shows CPU and memory usage as numbers and graphs.
 

@@ -1,6 +1,6 @@
 # yMonitory
 
-[English](README.md)
+[English README](README.md)
 
 Windows用の小さなオーバーレイ。CPUとメモリの使用率を、数値とグラフで常に最前面に表示する。
 
