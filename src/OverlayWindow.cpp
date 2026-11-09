@@ -28,6 +28,8 @@ static D2D1_COLOR_F ParseColor(const std::wstring& hex) {
     return D2D1::ColorF(r, g, b, a);
 }
 
+OverlayWindow* OverlayWindow::s_instance = NULL;
+
 OverlayWindow::OverlayWindow() :
     m_hwnd(NULL),
     m_hInstance(NULL),
@@ -108,6 +110,10 @@ bool OverlayWindow::Initialize(HINSTANCE hInstance) {
     UpdateWindow(m_hwnd);
 
     AddTrayIcon();
+
+    s_instance = this;
+    m_foregroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, NULL,
+        OnForegroundChanged, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
     return true;
 }
@@ -248,6 +254,10 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, 
             if (wParam == 2) pThis->UpdateGhostMode();
             return 0;
         case WM_DESTROY:
+            if (pThis->m_foregroundHook) {
+                UnhookWinEvent(pThis->m_foregroundHook);
+                pThis->m_foregroundHook = NULL;
+            }
             pThis->RemoveTrayIcon();
             PostQuitMessage(0);
             return 0;
@@ -427,6 +437,21 @@ HRESULT OverlayWindow::OnRender() {
         DiscardDeviceResources();
     }
     return hr;
+}
+
+void CALLBACK OverlayWindow::OnForegroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) {
+    if (s_instance) s_instance->EnsureTopmost();
+}
+
+// WS_EX_TOPMOST can stay set while the window falls below normal windows,
+// so the check walks the actual Z order instead of reading the style.
+void OverlayWindow::EnsureTopmost() {
+    for (HWND above = GetWindow(m_hwnd, GW_HWNDPREV); above; above = GetWindow(above, GW_HWNDPREV)) {
+        if (!(GetWindowLongPtr(above, GWL_EXSTYLE) & WS_EX_TOPMOST)) {
+            SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            return;
+        }
+    }
 }
 
 void OverlayWindow::OnTimer() {

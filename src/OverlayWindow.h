@@ -33,6 +33,8 @@ private:
     // Window Management
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     void OnResize(UINT width, UINT height);
+    static void CALLBACK OnForegroundChanged(HWINEVENTHOOK hook, DWORD event, HWND hWnd, LONG idObject, LONG idChild, DWORD thread, DWORD time);
+    void EnsureTopmost();
     
     // Direct2D / DirectWrite
     HRESULT CreateDeviceIndependentResources();
@@ -50,6 +52,8 @@ private:
     void UpdateTrayIcon(); // Swap icon after a taskbar theme change
     HICON LoadTrayIcon();
 
+    static OverlayWindow* s_instance; // For OnForegroundChanged, which has no user data
+    HWINEVENTHOOK m_foregroundHook = NULL;
     HWND m_hwnd;
     HINSTANCE m_hInstance;
     HICON m_hTrayIcon;
