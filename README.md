@@ -7,6 +7,7 @@ A small always-on-top overlay for Windows that shows CPU and memory usage as num
 ## Features
 
 - CPU usage and memory usage as percentages, with a graph of the last 60 samples for each. By default, the values update every second
+- Memory is shown on one line as two values: `RAM` is the share of physical memory in use, the same value as in Task Manager. `Commit` is committed memory as a share of the commit limit (physical memory plus page files). When `Commit` nears 100%, programs can fail to allocate memory even if physical memory is free. The memory graph shows both: `RAM` as a filled area and `Commit` as a line on top of it
 - Clicks pass through the overlay to the window below. Hold Ctrl to move it or open its menu
 - The overlay fades out as the mouse pointer comes within 100 px of it
 - Size, position, opacity, update interval and colors are set in `config.ini`
@@ -41,13 +42,12 @@ When `yMonitory.exe` starts, the overlay appears near the top-right corner of th
 | `Width`, `Height` | `200`, `100` | Size in pixels |
 | `Opacity` | `200` | Opacity of the whole overlay, from 0 to 255 |
 | `UpdateIntervalMs` | `1000` | Time between samples in milliseconds |
-| `ColorText`, `ColorBackground`, `ColorGraphCpu`, `ColorGraphRam` | `#FFFFFFFF`, `#00000080`, `#00FFFF80`, `#FF00FF` | Colors as `#RRGGBBAA` or `#RRGGBB` |
+| `ColorText`, `ColorBackground`, `ColorGraphCpu`, `ColorGraphRam`, `ColorGraphCommit` | `#FFFFFFFF`, `#00000080`, `#00FFFF80`, `#FF00FF`, `#FFA0FFCC` | Colors as `#RRGGBBAA` or `#RRGGBB` |
 | `GhostModeEnabled` | `true` | Fade out when the mouse pointer comes near |
 
 ## Known limitations
 
 - The right-click menu is in Japanese
-- The memory value is committed memory as a percentage of the commit limit (the `% Committed Bytes In Use` performance counter), not the share of physical memory in use
 - While Ctrl is held, the overlay takes mouse clicks, so a Ctrl+click on a window under the overlay goes to the overlay instead
 - A position set by dragging is often not kept for the next start. To fix the position, set `X` and `Y` in `config.ini`
 - When yMonitory is updated with Scoop, `config.ini` returns to the defaults

@@ -39,6 +39,7 @@ OverlayWindow::OverlayWindow() :
     m_pTextBrush(NULL),
     m_pGraphCpuBrush(NULL),
     m_pGraphRamBrush(NULL),
+    m_pGraphCommitBrush(NULL),
     m_pGraphCpuGradient(NULL),
     m_pGraphRamGradient(NULL),
     m_pDWriteFactory(NULL),
@@ -167,6 +168,9 @@ HRESULT OverlayWindow::CreateDeviceResources() {
         if (SUCCEEDED(hr)) {
             hr = m_pRenderTarget->CreateSolidColorBrush(ParseColor(g_Config.colorGraphRam), &m_pGraphRamBrush);
         }
+        if (SUCCEEDED(hr)) {
+            hr = m_pRenderTarget->CreateSolidColorBrush(ParseColor(g_Config.colorGraphCommit), &m_pGraphCommitBrush);
+        }
 
         // The gradient's start and end points are set per graph in OnRender.
         if (SUCCEEDED(hr)) {
@@ -218,6 +222,7 @@ void OverlayWindow::DiscardDeviceResources() {
     SafeRelease(&m_pTextBrush);
     SafeRelease(&m_pGraphCpuBrush);
     SafeRelease(&m_pGraphRamBrush);
+    SafeRelease(&m_pGraphCommitBrush);
     SafeRelease(&m_pGraphCpuGradient);
     SafeRelease(&m_pGraphRamGradient);
 }
@@ -338,20 +343,14 @@ HRESULT OverlayWindow::OnRender() {
         pBgBrush->Release();
     }
 
-    std::wstringstream ss;
-    ss << L"CPU: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetCpuUsage() << L"%\n";
-    ss << L"RAM: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetMemoryUsagePercent() << L"%";
-    std::wstring text = ss.str();
+    std::wstringstream cpuSs, memSs;
+    cpuSs << L"CPU: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetCpuUsage() << L"%";
+    memSs << L"RAM: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetMemoryUsagePercent() << L"%";
+    memSs << L"  Commit: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetCommitUsagePercent() << L"%";
+    std::wstring cpuText = cpuSs.str();
+    std::wstring memText = memSs.str();
 
-    m_pRenderTarget->DrawText(
-        text.c_str(),
-        (UINT32)text.length(),
-        m_pTextFormat,
-        D2D1::RectF(5, 5, rtSize.width, rtSize.height),
-        m_pTextBrush
-    );
-
-    // CPU in the top half, memory in the bottom half. 0-100% maps to the half's height.
+    // CPU in the top half, memory (RAM and Commit) in the bottom half. 0-100% maps to the half's height.
     const double* cpuHist = m_systemMonitor.GetCpuHistory();
     float xStep = (rtSize.width - 10) / (SystemMonitor::HISTORY_SIZE - 1);
     float yBase = rtSize.height / 2 - 5;
@@ -430,6 +429,24 @@ HRESULT OverlayWindow::OnRender() {
     
     yBase = rtSize.height - 5;
     DrawSmoothGraph(m_systemMonitor.GetMemoryHistory(), yBase, m_pGraphRamBrush, m_pGraphRamGradient);
+    // Commit is drawn over RAM as a line with no fill, so both stay readable where they overlap.
+    DrawSmoothGraph(m_systemMonitor.GetCommitHistory(), yBase, m_pGraphCommitBrush, nullptr);
+
+    // Each label sits with its own graph: CPU at the top of the top half, memory at the
+    // bottom of the bottom half. The memory label stays clear of the Commit line, which
+    // usually runs near the top of its half. Text is drawn after the graphs so the fills
+    // do not dim it.
+    m_pRenderTarget->DrawText(cpuText.c_str(), (UINT32)cpuText.length(), m_pTextFormat,
+        D2D1::RectF(5, 5, rtSize.width, rtSize.height), m_pTextBrush);
+
+    IDWriteTextLayout* pMemLayout = NULL;
+    if (SUCCEEDED(m_pDWriteFactory->CreateTextLayout(memText.c_str(), (UINT32)memText.length(),
+            m_pTextFormat, rtSize.width - 5, rtSize.height, &pMemLayout))) {
+        DWRITE_TEXT_METRICS metrics = {};
+        pMemLayout->GetMetrics(&metrics);
+        m_pRenderTarget->DrawTextLayout(D2D1::Point2F(5, rtSize.height - 5 - metrics.height), pMemLayout, m_pTextBrush);
+        pMemLayout->Release();
+    }
     
     hr = m_pRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {

@@ -60,6 +60,7 @@ void AppConfig::Load() {
         else if (key == L"ColorBackground") colorBackground = value;
         else if (key == L"ColorGraphCpu") colorGraphCpu = value;
         else if (key == L"ColorGraphRam") colorGraphRam = value;
+        else if (key == L"ColorGraphCommit") colorGraphCommit = value;
         else if (key == L"GhostModeEnabled") ghostModeEnabled = ParseBool(value, ghostModeEnabled);
     }
 
@@ -113,5 +114,6 @@ void AppConfig::Save() const {
     file << L"ColorBackground=" << colorBackground << L"\n";
     file << L"ColorGraphCpu=" << colorGraphCpu << L"\n";
     file << L"ColorGraphRam=" << colorGraphRam << L"\n";
+    file << L"ColorGraphCommit=" << colorGraphCommit << L"\n";
     file << L"GhostModeEnabled=" << (ghostModeEnabled ? L"true" : L"false") << L"\n";
 }

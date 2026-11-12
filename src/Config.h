@@ -15,6 +15,7 @@ struct AppConfig {
     std::wstring colorBackground = L"#00000080";
     std::wstring colorGraphCpu = L"#00FFFF80";
     std::wstring colorGraphRam = L"#FF00FF";
+    std::wstring colorGraphCommit = L"#FFA0FFCC";
 
     bool ghostModeEnabled = true;
     bool runOnStartup = false;
