@@ -37,6 +37,7 @@ OverlayWindow::OverlayWindow() :
     m_pD2DFactory(NULL),
     m_pRenderTarget(NULL),
     m_pTextBrush(NULL),
+    m_pTextOutlineBrush(NULL),
     m_pGraphCpuBrush(NULL),
     m_pGraphRamBrush(NULL),
     m_pGraphCommitBrush(NULL),
@@ -165,6 +166,9 @@ HRESULT OverlayWindow::CreateDeviceResources() {
             hr = m_pRenderTarget->CreateSolidColorBrush(ParseColor(g_Config.colorText), &m_pTextBrush);
         }
         if (SUCCEEDED(hr)) {
+            hr = m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0.75f), &m_pTextOutlineBrush);
+        }
+        if (SUCCEEDED(hr)) {
             hr = m_pRenderTarget->CreateSolidColorBrush(ParseColor(g_Config.colorGraphCpu), &m_pGraphCpuBrush);
         }
         if (SUCCEEDED(hr)) {
@@ -209,6 +213,7 @@ HRESULT OverlayWindow::CreateDeviceResources() {
 void OverlayWindow::DiscardDeviceResources() {
     SafeRelease(&m_pRenderTarget);
     SafeRelease(&m_pTextBrush);
+    SafeRelease(&m_pTextOutlineBrush);
     SafeRelease(&m_pGraphCpuBrush);
     SafeRelease(&m_pGraphRamBrush);
     SafeRelease(&m_pGraphCommitBrush);
@@ -447,21 +452,30 @@ HRESULT OverlayWindow::OnRender() {
     // at the bottom of its section. The memory label stays clear of the Commit line, which
     // usually runs near the top of its section. Text is drawn after the graphs so the fills
     // do not dim it.
-    m_pRenderTarget->DrawText(cpuText.c_str(), (UINT32)cpuText.length(), m_pTextFormat,
-        D2D1::RectF(5, 5, rtSize.width, rtSize.height), m_pTextBrush);
-    if (hasGpu) {
-        m_pRenderTarget->DrawText(gpuText.c_str(), (UINT32)gpuText.length(), m_pTextFormat,
-            D2D1::RectF(5, sectionHeight + 5, rtSize.width, rtSize.height), m_pTextBrush);
-    }
-
-    IDWriteTextLayout* pMemLayout = NULL;
-    if (SUCCEEDED(m_pDWriteFactory->CreateTextLayout(memText.c_str(), (UINT32)memText.length(),
-            m_pTextFormat, rtSize.width - 5, rtSize.height, &pMemLayout))) {
-        DWRITE_TEXT_METRICS metrics = {};
-        pMemLayout->GetMetrics(&metrics);
-        m_pRenderTarget->DrawTextLayout(D2D1::Point2F(5, rtSize.height - 5 - metrics.height), pMemLayout, m_pTextBrush);
-        pMemLayout->Release();
-    }
+    // A dark outline, drawn as the text shifted by one pixel in eight directions, keeps
+    // the labels readable where a graph line or fill runs behind them.
+    // y is the top of the text, or with alignBottom, the bottom of the text.
+    auto DrawLabel = [&](const std::wstring& text, float y, bool alignBottom) {
+        IDWriteTextLayout* pLayout = NULL;
+        if (FAILED(m_pDWriteFactory->CreateTextLayout(text.c_str(), (UINT32)text.length(),
+                m_pTextFormat, rtSize.width - 5, rtSize.height, &pLayout))) return;
+        if (alignBottom) {
+            DWRITE_TEXT_METRICS metrics = {};
+            pLayout->GetMetrics(&metrics);
+            y -= metrics.height;
+        }
+        if (m_pTextOutlineBrush) {
+            const float offsets[8][2] = { {-1,-1}, {0,-1}, {1,-1}, {-1,0}, {1,0}, {-1,1}, {0,1}, {1,1} };
+            for (const auto& o : offsets) {
+                m_pRenderTarget->DrawTextLayout(D2D1::Point2F(5 + o[0], y + o[1]), pLayout, m_pTextOutlineBrush);
+            }
+        }
+        m_pRenderTarget->DrawTextLayout(D2D1::Point2F(5, y), pLayout, m_pTextBrush);
+        pLayout->Release();
+    };
+    DrawLabel(cpuText, 5, false);
+    if (hasGpu) DrawLabel(gpuText, sectionHeight + 5, false);
+    DrawLabel(memText, rtSize.height - 5, true);
     
     hr = m_pRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {

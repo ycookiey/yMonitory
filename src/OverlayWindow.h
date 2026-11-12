@@ -62,6 +62,7 @@ private:
     ID2D1Factory* m_pD2DFactory;
     ID2D1HwndRenderTarget* m_pRenderTarget;
     ID2D1SolidColorBrush* m_pTextBrush;
+    ID2D1SolidColorBrush* m_pTextOutlineBrush;
     ID2D1SolidColorBrush* m_pGraphCpuBrush;
     ID2D1SolidColorBrush* m_pGraphRamBrush;
     ID2D1SolidColorBrush* m_pGraphCommitBrush;
