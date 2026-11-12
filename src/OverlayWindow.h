@@ -65,6 +65,8 @@ private:
     ID2D1SolidColorBrush* m_pGraphCpuBrush;
     ID2D1SolidColorBrush* m_pGraphRamBrush;
     ID2D1SolidColorBrush* m_pGraphCommitBrush;
+    ID2D1SolidColorBrush* m_pGraphGpuBrush;
+    ID2D1LinearGradientBrush* m_pGraphGpuGradient;
     ID2D1LinearGradientBrush* m_pGraphCpuGradient;
     ID2D1LinearGradientBrush* m_pGraphRamGradient;
     

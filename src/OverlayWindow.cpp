@@ -40,6 +40,8 @@ OverlayWindow::OverlayWindow() :
     m_pGraphCpuBrush(NULL),
     m_pGraphRamBrush(NULL),
     m_pGraphCommitBrush(NULL),
+    m_pGraphGpuBrush(NULL),
+    m_pGraphGpuGradient(NULL),
     m_pGraphCpuGradient(NULL),
     m_pGraphRamGradient(NULL),
     m_pDWriteFactory(NULL),
@@ -57,7 +59,7 @@ OverlayWindow::~OverlayWindow() {
 
 bool OverlayWindow::Initialize(HINSTANCE hInstance) {
     m_hInstance = hInstance;
-    m_systemMonitor.Initialize();
+    m_systemMonitor.Initialize(g_Config.showGpu);
 
     if (FAILED(CreateDeviceIndependentResources())) {
         return false;
@@ -171,11 +173,14 @@ HRESULT OverlayWindow::CreateDeviceResources() {
         if (SUCCEEDED(hr)) {
             hr = m_pRenderTarget->CreateSolidColorBrush(ParseColor(g_Config.colorGraphCommit), &m_pGraphCommitBrush);
         }
-
+        if (SUCCEEDED(hr)) {
+            hr = m_pRenderTarget->CreateSolidColorBrush(ParseColor(g_Config.colorGraphGpu), &m_pGraphGpuBrush);
+        }
+        // Fill under a graph: the graph color at the top, fading downward.
         // The gradient's start and end points are set per graph in OnRender.
-        if (SUCCEEDED(hr)) {
+        auto CreateFillGradient = [&](const std::wstring& color, ID2D1LinearGradientBrush** ppBrush) {
+            D2D1_COLOR_F col = ParseColor(color);
             D2D1_GRADIENT_STOP stops[2];
-            D2D1_COLOR_F col = ParseColor(g_Config.colorGraphCpu);
             stops[0].color = col;
             stops[0].position = 0.0f;
             stops[1].color = col;
@@ -183,36 +188,20 @@ HRESULT OverlayWindow::CreateDeviceResources() {
             stops[1].position = 1.0f;
 
             ID2D1GradientStopCollection* pStops = NULL;
-            hr = m_pRenderTarget->CreateGradientStopCollection(stops, 2, &pStops);
-            if (SUCCEEDED(hr)) {
-                hr = m_pRenderTarget->CreateLinearGradientBrush(
-                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(0, size.height)),
+            HRESULT result = m_pRenderTarget->CreateGradientStopCollection(stops, 2, &pStops);
+            if (SUCCEEDED(result)) {
+                result = m_pRenderTarget->CreateLinearGradientBrush(
+                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(0, (FLOAT)size.height)),
                     pStops,
-                    &m_pGraphCpuGradient
+                    ppBrush
                 );
                 pStops->Release();
             }
-        }
-        if (SUCCEEDED(hr)) {
-            D2D1_GRADIENT_STOP stops[2];
-            D2D1_COLOR_F col = ParseColor(g_Config.colorGraphRam);
-            stops[0].color = col;
-            stops[0].position = 0.0f;
-            stops[1].color = col;
-            stops[1].color.a = 0.0f;
-            stops[1].position = 1.0f;
-
-            ID2D1GradientStopCollection* pStops = NULL;
-            hr = m_pRenderTarget->CreateGradientStopCollection(stops, 2, &pStops);
-            if (SUCCEEDED(hr)) {
-                hr = m_pRenderTarget->CreateLinearGradientBrush(
-                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(0, size.height)), 
-                    pStops,
-                    &m_pGraphRamGradient
-                );
-                pStops->Release();
-            }
-        }
+            return result;
+        };
+        if (SUCCEEDED(hr)) hr = CreateFillGradient(g_Config.colorGraphCpu, &m_pGraphCpuGradient);
+        if (SUCCEEDED(hr)) hr = CreateFillGradient(g_Config.colorGraphGpu, &m_pGraphGpuGradient);
+        if (SUCCEEDED(hr)) hr = CreateFillGradient(g_Config.colorGraphRam, &m_pGraphRamGradient);
     }
     return hr;
 }
@@ -223,6 +212,8 @@ void OverlayWindow::DiscardDeviceResources() {
     SafeRelease(&m_pGraphCpuBrush);
     SafeRelease(&m_pGraphRamBrush);
     SafeRelease(&m_pGraphCommitBrush);
+    SafeRelease(&m_pGraphGpuBrush);
+    SafeRelease(&m_pGraphGpuGradient);
     SafeRelease(&m_pGraphCpuGradient);
     SafeRelease(&m_pGraphRamGradient);
 }
@@ -343,18 +334,29 @@ HRESULT OverlayWindow::OnRender() {
         pBgBrush->Release();
     }
 
-    std::wstringstream cpuSs, memSs;
+    // Sections from top to bottom: CPU, GPU (only when a GPU source is available), memory.
+    bool hasGpu = m_systemMonitor.HasGpu();
+
+    std::wstringstream cpuSs, gpuSs, memSs;
     cpuSs << L"CPU: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetCpuUsage() << L"%";
+    if (hasGpu) {
+        gpuSs << L"GPU: ";
+        if (m_systemMonitor.IsGpuValid()) gpuSs << std::fixed << std::setprecision(1) << m_systemMonitor.GetGpuUsage() << L"%";
+        else gpuSs << L"--";
+    }
     memSs << L"RAM: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetMemoryUsagePercent() << L"%";
     memSs << L"  Commit: " << std::fixed << std::setprecision(1) << m_systemMonitor.GetCommitUsagePercent() << L"%";
     std::wstring cpuText = cpuSs.str();
+    std::wstring gpuText = gpuSs.str();
     std::wstring memText = memSs.str();
 
-    // CPU in the top half, memory (RAM and Commit) in the bottom half. 0-100% maps to the half's height.
-    const double* cpuHist = m_systemMonitor.GetCpuHistory();
+    // The window is split into equal sections stacked top to bottom. In each section,
+    // 0-100% maps to the section's height minus a 5 px margin above and below.
+    int sectionCount = hasGpu ? 3 : 2;
+    float sectionHeight = rtSize.height / sectionCount;
     float xStep = (rtSize.width - 10) / (SystemMonitor::HISTORY_SIZE - 1);
-    float yBase = rtSize.height / 2 - 5;
-    float yScale = (rtSize.height / 2 - 10) / 100.0f;
+    float yScale = (sectionHeight - 10) / 100.0f;
+    auto SectionBase = [&](int index) { return sectionHeight * (index + 1) - 5; };
 
     auto DrawSmoothGraph = [&](const double* data, float yBasePos, ID2D1Brush* strokeBrush, ID2D1Brush* fillBrush) {
         if (!strokeBrush) return;
@@ -411,10 +413,15 @@ HRESULT OverlayWindow::OnRender() {
 
 
                 // static_cast, not dynamic_cast: Direct2D objects carry no RTTI that
-                // dynamic_cast can rely on. Both callers pass a linear gradient brush.
+                // dynamic_cast can rely on. Every caller that passes a fill passes a
+                // linear gradient brush.
                 if (fillBrush) {
                      ID2D1LinearGradientBrush* grad = static_cast<ID2D1LinearGradientBrush*>(fillBrush);
-                     grad->SetStartPoint(D2D1::Point2F(0, yBasePos - 100 * yScale));
+                     // The fill is strongest at the highest point of the graph, not at 100%,
+                     // so it stays visible while the values are low.
+                     float topValue = 1.0f;
+                     for (int i = 0; i < SystemMonitor::HISTORY_SIZE; i++) topValue = (std::max)(topValue, (float)data[i]);
+                     grad->SetStartPoint(D2D1::Point2F(0, yBasePos - topValue * yScale));
                      grad->SetEndPoint(D2D1::Point2F(0, yBasePos));
                 }
 
@@ -425,19 +432,27 @@ HRESULT OverlayWindow::OnRender() {
         pPath->Release();
     };
 
-    DrawSmoothGraph(cpuHist, yBase, m_pGraphCpuBrush, m_pGraphCpuGradient);
-    
-    yBase = rtSize.height - 5;
-    DrawSmoothGraph(m_systemMonitor.GetMemoryHistory(), yBase, m_pGraphRamBrush, m_pGraphRamGradient);
-    // Commit is drawn over RAM as a line with no fill, so both stay readable where they overlap.
-    DrawSmoothGraph(m_systemMonitor.GetCommitHistory(), yBase, m_pGraphCommitBrush, nullptr);
+    float cpuBase = SectionBase(0);
+    DrawSmoothGraph(m_systemMonitor.GetCpuHistory(), cpuBase, m_pGraphCpuBrush, m_pGraphCpuGradient);
+    if (hasGpu) {
+        DrawSmoothGraph(m_systemMonitor.GetGpuHistory(), SectionBase(1), m_pGraphGpuBrush, m_pGraphGpuGradient);
+    }
 
-    // Each label sits with its own graph: CPU at the top of the top half, memory at the
-    // bottom of the bottom half. The memory label stays clear of the Commit line, which
-    // usually runs near the top of its half. Text is drawn after the graphs so the fills
+    float memBase = SectionBase(sectionCount - 1);
+    DrawSmoothGraph(m_systemMonitor.GetMemoryHistory(), memBase, m_pGraphRamBrush, m_pGraphRamGradient);
+    // Commit is drawn over RAM as a line with no fill, so both stay readable where they overlap.
+    DrawSmoothGraph(m_systemMonitor.GetCommitHistory(), memBase, m_pGraphCommitBrush, nullptr);
+
+    // Each label sits with its own graph: CPU and GPU at the top of their sections, memory
+    // at the bottom of its section. The memory label stays clear of the Commit line, which
+    // usually runs near the top of its section. Text is drawn after the graphs so the fills
     // do not dim it.
     m_pRenderTarget->DrawText(cpuText.c_str(), (UINT32)cpuText.length(), m_pTextFormat,
         D2D1::RectF(5, 5, rtSize.width, rtSize.height), m_pTextBrush);
+    if (hasGpu) {
+        m_pRenderTarget->DrawText(gpuText.c_str(), (UINT32)gpuText.length(), m_pTextFormat,
+            D2D1::RectF(5, sectionHeight + 5, rtSize.width, rtSize.height), m_pTextBrush);
+    }
 
     IDWriteTextLayout* pMemLayout = NULL;
     if (SUCCEEDED(m_pDWriteFactory->CreateTextLayout(memText.c_str(), (UINT32)memText.length(),

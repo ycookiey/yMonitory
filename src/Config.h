@@ -6,7 +6,7 @@ struct AppConfig {
     int x = -1; // -1 places the window near the top-right corner
     int y = -1;
     int width = 200;
-    int height = 100;
+    int height = 150; // Three sections (CPU, GPU, memory) of 50 px each
     int opacity = 200; // 0-255
     int updateIntervalMs = 1000;
 
@@ -16,6 +16,10 @@ struct AppConfig {
     std::wstring colorGraphCpu = L"#00FFFF80";
     std::wstring colorGraphRam = L"#FF00FF";
     std::wstring colorGraphCommit = L"#FFA0FFCC";
+    std::wstring colorGraphGpu = L"#A0FFFFCC";
+
+    // With false, GPU usage is neither read nor shown.
+    bool showGpu = true;
 
     bool ghostModeEnabled = true;
     bool runOnStartup = false;

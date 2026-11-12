@@ -12,6 +12,7 @@ SystemMonitor::SystemMonitor() :
     std::fill(std::begin(m_cpuHistory), std::end(m_cpuHistory), 0.0);
     std::fill(std::begin(m_memoryHistory), std::end(m_memoryHistory), 0.0);
     std::fill(std::begin(m_commitHistory), std::end(m_commitHistory), 0.0);
+    std::fill(std::begin(m_gpuHistory), std::end(m_gpuHistory), 0.0);
 }
 
 SystemMonitor::~SystemMonitor() {
@@ -21,7 +22,9 @@ SystemMonitor::~SystemMonitor() {
     }
 }
 
-bool SystemMonitor::Initialize() {
+bool SystemMonitor::Initialize(bool enableGpu) {
+    m_hasGpu = enableGpu && m_gpu.Initialize();
+
     PDH_STATUS status = PdhOpenQuery(nullptr, 0, &m_queryHandle);
     if (status != ERROR_SUCCESS) return false;
 
@@ -65,17 +68,24 @@ void SystemMonitor::Update() {
         }
     }
 
-    PushHistory(m_cpuUsage, m_memoryUsagePercent, m_commitUsagePercent);
+    if (m_hasGpu) {
+        m_gpuValid = m_gpu.Read(m_gpuUsage);
+        if (!m_gpuValid) m_gpuUsage = 0.0;
+    }
+
+    PushHistory(m_cpuUsage, m_memoryUsagePercent, m_commitUsagePercent, m_gpuUsage);
 }
 
-void SystemMonitor::PushHistory(double cpu, double mem, double commit) {
+void SystemMonitor::PushHistory(double cpu, double mem, double commit, double gpu) {
     // Shifting instead of a ring buffer keeps the arrays in drawing order.
     // Moving 60 values per sample is negligible work.
     for (int i = 0; i < HISTORY_SIZE - 1; i++) {
         m_cpuHistory[i] = m_cpuHistory[i + 1];
         m_memoryHistory[i] = m_memoryHistory[i + 1];
         m_commitHistory[i] = m_commitHistory[i + 1];
+        m_gpuHistory[i] = m_gpuHistory[i + 1];
     }
+    m_gpuHistory[HISTORY_SIZE - 1] = gpu;
     m_cpuHistory[HISTORY_SIZE - 1] = cpu;
     m_memoryHistory[HISTORY_SIZE - 1] = mem;
     m_commitHistory[HISTORY_SIZE - 1] = commit;
